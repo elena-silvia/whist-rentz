@@ -195,7 +195,7 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(isRomanian ? 'Joacă-te, mă, băiete!' : 'Choose your game!')),
+      appBar: AppBar(title: Text(isRomanian ? 'Ce joc vrei să joci?' : 'Choose your game!')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -239,7 +239,7 @@ class PlayerSelectionScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              isRomanian ? 'Alegeți numărul de victime:' : 'Choose the number of victims:',
+              isRomanian ? 'Alegeți numărul de jucători:' : 'Choose the number of players:',
               style: const TextStyle(fontSize: 26),
               textAlign: TextAlign.center,
             ),
