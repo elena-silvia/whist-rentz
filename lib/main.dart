@@ -1,17 +1,17 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flag/flag.dart'; // <-- Am adăugat pachetul magic pentru steaguri!
+import 'package:flag/flag.dart';
 
 void main() {
   runApp(const ScoreKeeperApp());
 }
 
-// --- CULORILE NOASTRE NOI DE TABLĂ ---
+// --- CULORILE DE TABLĂ ---
 const Color boardGreen = Color(0xFF0E1C12);
-const Color chalkWhite = Color(0xFFF5F5F5); 
-const Color chalkYellow = Color(0xFFFFF59D); 
-const Color chalkRed = Color(0xFFEF9A9A); 
+const Color chalkWhite = Color(0xFFF5F5F5);
+const Color chalkYellow = Color(0xFFFFF59D);
+const Color chalkRed = Color(0xFFEF9A9A);
 
 class ScoreKeeperApp extends StatelessWidget {
   const ScoreKeeperApp({super.key});
@@ -22,7 +22,7 @@ class ScoreKeeperApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Whist & Rentz Score Keeper',
       theme: ThemeData(
-        scaffoldBackgroundColor: Colors.transparent, 
+        scaffoldBackgroundColor: Colors.transparent,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           foregroundColor: chalkWhite,
@@ -46,7 +46,7 @@ class ScoreKeeperApp extends StatelessWidget {
   }
 }
 
-// --- ECRANUL NOU PENTRU LIMBĂ (CU STEAGURI REALE) ---
+// --- ECRANUL DE LIMBĂ ---
 class LanguageSelectionScreen extends StatelessWidget {
   const LanguageSelectionScreen({super.key});
 
@@ -66,7 +66,6 @@ class LanguageSelectionScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // Buton Limba Română
                 InkWell(
                   onTap: () {
                     Navigator.pushReplacement(
@@ -79,7 +78,6 @@ class LanguageSelectionScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(12.0),
                     child: Column(
                       children: [
-                        // Aici am pus steagul României în loc de emoji
                         Flag.fromString('RO', height: 60, width: 85, borderRadius: 8),
                         const SizedBox(height: 15),
                         Text('Română', style: GoogleFonts.architectsDaughter(fontSize: 24)),
@@ -87,7 +85,6 @@ class LanguageSelectionScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Buton Limba Engleză
                 InkWell(
                   onTap: () {
                     Navigator.pushReplacement(
@@ -100,7 +97,6 @@ class LanguageSelectionScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(12.0),
                     child: Column(
                       children: [
-                        // Aici am pus steagul UK în loc de emoji
                         Flag.fromString('GB', height: 60, width: 85, borderRadius: 8),
                         const SizedBox(height: 15),
                         Text('English', style: GoogleFonts.architectsDaughter(fontSize: 24)),
@@ -117,7 +113,7 @@ class LanguageSelectionScreen extends StatelessWidget {
   }
 }
 
-// --- WIDGET PENTRU FUNDALUL MURDAR DE TABLĂ ---
+// --- WIDGET FUNDAL DE TABLĂ ---
 class ChalkboardBackground extends StatelessWidget {
   final Widget child;
   const ChalkboardBackground({super.key, required this.child});
@@ -137,7 +133,7 @@ class ChalkboardBackground extends StatelessWidget {
 class ChalkDustPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final random = Random(42); 
+    final random = Random(42);
     final smudgePaint = Paint()
       ..color = Colors.white.withOpacity(0.015)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40);
@@ -170,7 +166,7 @@ class ChalkDustPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// STIL PENTRU BUTOANE
+// --- STILURI BUTOANE CRETĂ ---
 final ButtonStyle chalkButtonStyle = OutlinedButton.styleFrom(
   foregroundColor: chalkWhite,
   side: const BorderSide(color: chalkWhite, width: 2.5),
@@ -187,7 +183,7 @@ final ButtonStyle chalkCircleStyle = OutlinedButton.styleFrom(
   textStyle: GoogleFonts.architectsDaughter(fontSize: 28, fontWeight: FontWeight.bold),
 );
 
-// --- ECRANELE JOCULUI ---
+// --- ECRAN START JOCURI ---
 class HomePage extends StatelessWidget {
   final bool isRomanian;
   const HomePage({super.key, required this.isRomanian});
@@ -195,7 +191,18 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(isRomanian ? 'Ce joc vrei să joci?' : 'Choose your game!')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: chalkWhite),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const LanguageSelectionScreen()),
+            );
+          },
+        ),
+        title: Text(isRomanian ? 'Alegeți jocul:' : 'Choose your game!'),
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -328,10 +335,19 @@ class _PlayerNamesScreenState extends State<PlayerNamesScreen> {
                     names[i] = widget.isRomanian ? 'Jucător ${i + 1}' : 'Player ${i + 1}';
                   }
                 }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ScoreBoardScreen(game: widget.game, playerNames: names, isRomanian: widget.isRomanian)),
-                );
+                
+                // RUTARE CĂTRE JOCUL CORECT
+                if (widget.game == 'Whist') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => WhistScoreBoardScreen(playerNames: names, isRomanian: widget.isRomanian)),
+                  );
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => RentzScoreBoardScreen(playerNames: names, isRomanian: widget.isRomanian)),
+                  );
+                }
               },
               style: chalkButtonStyle.copyWith(minimumSize: MaterialStateProperty.all(const Size(double.infinity, 60))),
               child: Text(widget.isRomanian ? 'Începe Jocul' : 'Start the Game'),
@@ -343,13 +359,17 @@ class _PlayerNamesScreenState extends State<PlayerNamesScreen> {
   }
 }
 
-class RoundData {
+// ==========================================
+// ============= LOGICA WHIST ===============
+// ==========================================
+
+class WhistRoundData {
   final int cardCount;
   final int firstPlayerIndex;
   List<int?> bids;
   List<int?> made;
 
-  RoundData({required this.cardCount, required this.firstPlayerIndex, required int playerCount})
+  WhistRoundData({required this.cardCount, required this.firstPlayerIndex, required int playerCount})
       : bids = List.filled(playerCount, null),
         made = List.filled(playerCount, null);
 
@@ -357,24 +377,23 @@ class RoundData {
   bool get isRoundComplete => !made.contains(null);
 }
 
-class ScoreBoardScreen extends StatefulWidget {
-  final String game;
+class WhistScoreBoardScreen extends StatefulWidget {
   final List<String> playerNames;
   final bool isRomanian;
 
-  const ScoreBoardScreen({super.key, required this.game, required this.playerNames, required this.isRomanian});
+  const WhistScoreBoardScreen({super.key, required this.playerNames, required this.isRomanian});
 
   @override
-  State<ScoreBoardScreen> createState() => _ScoreBoardScreenState();
+  State<WhistScoreBoardScreen> createState() => _WhistScoreBoardScreenState();
 }
 
-class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
-  final List<RoundData> _rounds = [];
+class _WhistScoreBoardScreenState extends State<WhistScoreBoardScreen> {
+  final List<WhistRoundData> _rounds = [];
 
   @override
   void initState() {
     super.initState();
-    if (widget.game == 'Whist') _generateWhistRounds();
+    _generateWhistRounds();
   }
 
   void _generateWhistRounds() {
@@ -387,7 +406,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
     for (int i = 0; i < n; i++) cardsPattern.add(1);
 
     for (int i = 0; i < cardsPattern.length; i++) {
-      _rounds.add(RoundData(cardCount: cardsPattern[i], firstPlayerIndex: i % n, playerCount: n));
+      _rounds.add(WhistRoundData(cardCount: cardsPattern[i], firstPlayerIndex: i % n, playerCount: n));
     }
   }
 
@@ -415,13 +434,13 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
     int activeIdx = _activeRoundIndex;
 
     if (activeIdx == -1) {
-      RoundData lastRound = _rounds.last;
+      WhistRoundData lastRound = _rounds.last;
       int prevIdx = (lastRound.firstPlayerIndex + n - 1) % n;
       setState(() => lastRound.made[prevIdx] = null);
       return;
     }
 
-    RoundData r = _rounds[activeIdx];
+    WhistRoundData r = _rounds[activeIdx];
     int madeGiven = r.made.where((m) => m != null).length;
     if (madeGiven > 0) {
       int prevIdx = (r.firstPlayerIndex + madeGiven - 1) % n;
@@ -437,7 +456,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
     }
 
     if (activeIdx > 0) {
-      RoundData prevRound = _rounds[activeIdx - 1];
+      WhistRoundData prevRound = _rounds[activeIdx - 1];
       int prevIdx = (prevRound.firstPlayerIndex + n - 1) % n;
       setState(() => prevRound.made[prevIdx] = null);
     }
@@ -447,7 +466,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
     int activeIdx = _activeRoundIndex;
     if (activeIdx == -1) return;
 
-    RoundData r = _rounds[activeIdx];
+    WhistRoundData r = _rounds[activeIdx];
     int n = widget.playerNames.length;
     bool isBidding = !r.isBiddingComplete;
     int inputsGiven = isBidding ? r.bids.where((b) => b != null).length : r.made.where((m) => m != null).length;
@@ -469,13 +488,6 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
   }
 
   Widget _buildInputPanel() {
-    if (widget.game != 'Whist') {
-      return Padding(
-        padding: const EdgeInsets.all(16.0), 
-        child: Text(widget.isRomanian ? 'În curând și Rentz.' : 'Rentz coming soon.')
-      );
-    }
-
     int activeIdx = _activeRoundIndex;
     if (activeIdx == -1) {
       return Container(
@@ -491,7 +503,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
       );
     }
 
-    RoundData r = _rounds[activeIdx];
+    WhistRoundData r = _rounds[activeIdx];
     int n = widget.playerNames.length;
     bool isBidding = !r.isBiddingComplete;
     int inputsGiven = isBidding ? r.bids.where((b) => b != null).length : r.made.where((m) => m != null).length;
@@ -519,10 +531,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
               Expanded(
                 child: Text(
                   isBidding ? '$bidLabel: $currentPlayerName' : '$resultLabel: $currentPlayerName',
-                  style: TextStyle(
-                    fontSize: 24,
-                    color: isBidding ? chalkYellow : chalkWhite,
-                  ),
+                  style: TextStyle(fontSize: 24, color: isBidding ? chalkYellow : chalkWhite),
                 ),
               ),
               IconButton(
@@ -571,62 +580,21 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
     int currentPlayerIndex = -1;
     bool isBidding = false;
     if (activeIdx != -1) {
-      RoundData r = _rounds[activeIdx];
+      WhistRoundData r = _rounds[activeIdx];
       isBidding = !r.isBiddingComplete;
       int inputsGiven = isBidding ? r.bids.where((b) => b != null).length : r.made.where((m) => m != null).length;
       currentPlayerIndex = (r.firstPlayerIndex + inputsGiven) % widget.playerNames.length;
     }
 
-    String titleText = widget.isRomanian ? 'Scor ${widget.game}' : '${widget.game} Score';
-    String columnGame = widget.isRomanian ? 'Joc' : 'Round';
-
-    // AICI E MAGIA PENTRU PROTECȚIE LA BUTONUL DE BACK (POPSCOPE)
     return PopScope(
-      canPop: false, // Blochează ieșirea directă
+      canPop: false, 
       onPopInvoked: (bool didPop) async {
-        if (didPop) return; // Dacă deja a ieșit (din cod intern), nu mai face nimic
-        
-        // Afișează fereastra de confirmare!
-        final bool shouldPop = await showDialog<bool>(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFF1B291D), // Aceeași culoare de tablă
-              shape: RoundedRectangleBorder(
-                side: const BorderSide(color: chalkWhite, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              title: Text(
-                widget.isRomanian ? 'Atenție!' : 'Warning!',
-                style: const TextStyle(color: chalkYellow, fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              content: Text(
-                widget.isRomanian
-                    ? 'Ești sigur că vrei să părăsești jocul?\nTot scorul de până acum se va șterge definitiv!'
-                    : 'Are you sure you want to leave?\nAll current scores will be lost forever!',
-                style: const TextStyle(color: chalkWhite, fontSize: 18),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false), // Trimite "false" (Nu ieși)
-                  child: Text(widget.isRomanian ? 'Anulează' : 'Cancel', style: const TextStyle(color: chalkWhite, fontSize: 18)),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true), // Trimite "true" (Da, ieși)
-                  child: Text(widget.isRomanian ? 'Da, ieși' : 'Yes, leave', style: const TextStyle(color: chalkRed, fontSize: 18)),
-                ),
-              ],
-            );
-          },
-        ) ?? false; // Dacă dai click pe lângă fereastră, e "false" din oficiu
-
-        // Dacă ai apăsat "Da, ieși", execută ieșirea din pagină
-        if (shouldPop && context.mounted) {
-          Navigator.of(context).pop();
-        }
+        if (didPop) return; 
+        final bool shouldPop = await showExitDialog(context, widget.isRomanian);
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
-        appBar: AppBar(title: Text(titleText)),
+        appBar: AppBar(title: Text(widget.isRomanian ? 'Scor Whist' : 'Whist Score')),
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -642,7 +610,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
                     dataRowMinHeight: 60, 
                     dataRowMaxHeight: 80,
                     columns: [
-                      DataColumn(label: Text(columnGame, style: const TextStyle(fontSize: 20, color: chalkYellow))),
+                      DataColumn(label: Text(widget.isRomanian ? 'Joc' : 'Round', style: const TextStyle(fontSize: 20, color: chalkYellow))),
                       ...widget.playerNames.map((name) => DataColumn(
                             label: Text(name, style: const TextStyle(fontSize: 20, color: chalkYellow)),
                           )),
@@ -650,14 +618,8 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
                     rows: [
                       ..._rounds.asMap().entries.map((entry) {
                         int roundIndex = entry.key;
-                        RoundData r = entry.value;
-
-                        String cardLabel;
-                        if (widget.isRomanian) {
-                          cardLabel = r.cardCount == 1 ? 'carte' : 'cărți';
-                        } else {
-                          cardLabel = r.cardCount == 1 ? 'card' : 'cards';
-                        }
+                        WhistRoundData r = entry.value;
+                        String cardLabel = widget.isRomanian ? (r.cardCount == 1 ? 'carte' : 'cărți') : (r.cardCount == 1 ? 'card' : 'cards');
 
                         return DataRow(
                           color: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
@@ -690,10 +652,7 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
                                       Text('$bid  /  $made', style: const TextStyle(fontSize: 16)),
                                       Text(
                                         '${score > 0 ? '+$score' : score}',
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          color: score > 0 ? chalkYellow : chalkRed,
-                                        ),
+                                        style: TextStyle(fontSize: 20, color: score > 0 ? chalkYellow : chalkRed),
                                       ),
                                     ],
                                   ),
@@ -723,4 +682,325 @@ class _ScoreBoardScreenState extends State<ScoreBoardScreen> {
       ),
     );
   }
+}
+
+
+// ==========================================
+// ============= LOGICA RENTZ ===============
+// ==========================================
+
+class RentzRoundData {
+  final int dealerIndex;
+  final String gameName;
+  final List<int> scores;
+
+  RentzRoundData({required this.dealerIndex, required this.gameName, required this.scores});
+}
+
+class RentzScoreBoardScreen extends StatefulWidget {
+  final List<String> playerNames;
+  final bool isRomanian;
+
+  const RentzScoreBoardScreen({super.key, required this.playerNames, required this.isRomanian});
+
+  @override
+  State<RentzScoreBoardScreen> createState() => _RentzScoreBoardScreenState();
+}
+
+class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
+  final List<RentzRoundData> _rounds = [];
+  String? _selectedGame;
+  late List<TextEditingController> _scoreControllers;
+
+  // Jocurile oficiale de Rentz (fiecare jucător le va împărți o dată)
+  final List<String> _gamesRo = ['Popa de Roșu', 'Dame', 'Romburi', 'Levate', 'Totale', 'Rentz'];
+  final List<String> _gamesEn = ['King of Hearts', 'Queens', 'Diamonds', 'Tricks', 'Totals', 'Rentz'];
+
+  @override
+  void initState() {
+    super.initState();
+    _scoreControllers = List.generate(widget.playerNames.length, (index) => TextEditingController());
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _scoreControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  List<String> get _allGames => widget.isRomanian ? _gamesRo : _gamesEn;
+  
+  int get _totalRoundsRequired => widget.playerNames.length * 6;
+  
+  int get _currentDealerIndex {
+    if (_rounds.length >= _totalRoundsRequired) return widget.playerNames.length - 1;
+    return _rounds.length ~/ 6; // La fiecare 6 jocuri se schimbă dealerul
+  }
+
+  List<String> get _availableGamesForCurrentDealer {
+    if (_rounds.length >= _totalRoundsRequired) return [];
+    List<String> playedByDealer = _rounds
+        .where((r) => r.dealerIndex == _currentDealerIndex)
+        .map((r) => r.gameName)
+        .toList();
+    return _allGames.where((game) => !playedByDealer.contains(game)).toList();
+  }
+
+  List<int> get _totals {
+    List<int> totals = List.filled(widget.playerNames.length, 0);
+    for (var round in _rounds) {
+      for (int i = 0; i < widget.playerNames.length; i++) {
+        totals[i] += round.scores[i];
+      }
+    }
+    return totals;
+  }
+
+  void _undoLastAction() {
+    if (_rounds.isNotEmpty) {
+      setState(() {
+        _rounds.removeLast();
+        _selectedGame = null;
+        for (var c in _scoreControllers) { c.clear(); }
+      });
+    }
+  }
+
+  void _saveRentzRound() {
+    if (_selectedGame == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(widget.isRomanian ? 'Selectează tipul jocului!' : 'Select the game type!'),
+      ));
+      return;
+    }
+
+    List<int> newScores = [];
+    for (int i = 0; i < widget.playerNames.length; i++) {
+      String text = _scoreControllers[i].text.trim();
+      if (text.isEmpty) text = '0'; // default la 0 dacă e lăsat gol
+      int? val = int.tryParse(text);
+      if (val == null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(widget.isRomanian ? 'Scor invalid la ${widget.playerNames[i]}!' : 'Invalid score for ${widget.playerNames[i]}!'),
+        ));
+        return;
+      }
+      newScores.add(val);
+    }
+
+    setState(() {
+      _rounds.add(RentzRoundData(
+        dealerIndex: _currentDealerIndex,
+        gameName: _selectedGame!,
+        scores: newScores,
+      ));
+      _selectedGame = null;
+      for (var c in _scoreControllers) { c.clear(); }
+    });
+  }
+
+  Widget _buildInputPanel() {
+    if (_rounds.length >= _totalRoundsRequired) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: chalkWhite.withOpacity(0.5), width: 2))),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(widget.isRomanian ? 'S-A TERMINAT! 🎉' : 'IT\'S OVER! 🎉', style: const TextStyle(fontSize: 24, color: chalkYellow)),
+            IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastAction, color: chalkRed)
+          ],
+        ),
+      );
+    }
+
+    String dealerName = widget.playerNames[_currentDealerIndex];
+    List<String> available = _availableGamesForCurrentDealer;
+
+    return Container(
+      padding: const EdgeInsets.only(top: 15, bottom: 25, left: 16, right: 16),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.2),
+        border: Border(top: BorderSide(color: chalkWhite.withOpacity(0.5), width: 2)), 
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Dealer: $dealerName',
+                style: const TextStyle(fontSize: 24, color: chalkYellow, fontWeight: FontWeight.bold),
+              ),
+              if (_rounds.isNotEmpty)
+                IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastAction, color: chalkRed)
+            ],
+          ),
+          const SizedBox(height: 10),
+          
+          // Selectare joc
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: available.map((game) {
+              bool isSelected = _selectedGame == game;
+              return ChoiceChip(
+                label: Text(game, style: TextStyle(color: isSelected ? boardGreen : chalkWhite, fontSize: 16)),
+                selected: isSelected,
+                selectedColor: chalkYellow,
+                backgroundColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: isSelected ? chalkYellow : chalkWhite),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                onSelected: (selected) {
+                  setState(() => _selectedGame = selected ? game : null);
+                },
+              );
+            }).toList(),
+          ),
+          
+          const SizedBox(height: 15),
+          
+          // Căsuțe pentru scoruri
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: List.generate(widget.playerNames.length, (index) {
+              return SizedBox(
+                width: 80,
+                child: TextField(
+                  controller: _scoreControllers[index],
+                  keyboardType: const TextInputType.numberWithOptions(signed: true),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.architectsDaughter(fontSize: 20, color: chalkWhite),
+                  decoration: InputDecoration(
+                    labelText: widget.playerNames[index],
+                    labelStyle: TextStyle(color: chalkYellow.withOpacity(0.8), fontSize: 14),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 5),
+                    enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: chalkWhite)),
+                    focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: chalkYellow, width: 2)),
+                  ),
+                ),
+              );
+            }),
+          ),
+          
+          const SizedBox(height: 15),
+          ElevatedButton(
+            onPressed: _saveRentzRound,
+            style: chalkButtonStyle.copyWith(
+              backgroundColor: MaterialStateProperty.all(chalkWhite.withOpacity(0.1)),
+            ),
+            child: Text(widget.isRomanian ? 'Salvează Runda' : 'Save Round', style: const TextStyle(color: chalkYellow)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return; 
+        final bool shouldPop = await showExitDialog(context, widget.isRomanian);
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(widget.isRomanian ? 'Scor Rentz' : 'Rentz Score')),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: 25,
+                    headingRowColor: MaterialStateProperty.all(Colors.black.withOpacity(0.3)), 
+                    dividerThickness: 1,
+                    dataRowMinHeight: 40, 
+                    columns: [
+                      DataColumn(label: Text(widget.isRomanian ? 'Joc' : 'Game', style: const TextStyle(fontSize: 20, color: chalkYellow))),
+                      ...widget.playerNames.map((name) => DataColumn(
+                            label: Text(name, style: const TextStyle(fontSize: 20, color: chalkYellow)),
+                          )),
+                    ],
+                    rows: [
+                      ..._rounds.map((r) {
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(r.gameName, style: const TextStyle(fontSize: 16, color: Colors.white70))),
+                            ...r.scores.map((score) => DataCell(
+                              Text(
+                                '${score > 0 ? '+$score' : score}', 
+                                style: TextStyle(fontSize: 18, color: score > 0 ? chalkYellow : (score < 0 ? chalkRed : chalkWhite))
+                              )
+                            )),
+                          ],
+                        );
+                      }),
+                      DataRow(
+                        color: MaterialStateProperty.all(Colors.black.withOpacity(0.3)),
+                        cells: [
+                          const DataCell(Text('TOTAL', style: TextStyle(fontSize: 22, color: chalkYellow))),
+                          ..._totals.map((total) => DataCell(
+                                Text('$total', style: const TextStyle(fontSize: 24, color: chalkYellow)),
+                              )),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            _buildInputPanel(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- FUNCȚIE GLOBALĂ PENTRU DIALOGUL DE IEȘIRE ---
+Future<bool> showExitDialog(BuildContext context, bool isRomanian) async {
+  return await showDialog<bool>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF1B291D), 
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: chalkWhite, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        title: Text(
+          isRomanian ? 'Atenție!' : 'Warning!',
+          style: const TextStyle(color: chalkYellow, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          isRomanian
+              ? 'Ești sigur că vrei să părăsești jocul?\nTot scorul de până acum se va șterge definitiv!'
+              : 'Are you sure you want to leave?\nAll current scores will be lost forever!',
+          style: const TextStyle(color: chalkWhite, fontSize: 18),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: Text(isRomanian ? 'Anulează' : 'Cancel', style: const TextStyle(color: chalkWhite, fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: Text(isRomanian ? 'Da, ieși' : 'Yes, leave', style: const TextStyle(color: chalkRed, fontSize: 18)),
+          ),
+        ],
+      );
+    },
+  ) ?? false;
 }
