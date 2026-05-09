@@ -183,6 +183,42 @@ final ButtonStyle chalkCircleStyle = OutlinedButton.styleFrom(
   textStyle: GoogleFonts.architectsDaughter(fontSize: 28, fontWeight: FontWeight.bold),
 );
 
+// --- FUNCȚIE GLOBALĂ PENTRU DIALOGUL DE IEȘIRE ---
+Future<bool> showExitDialog(BuildContext context, bool isRomanian) async {
+  return await showDialog<bool>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF1B291D), 
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: chalkWhite, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        title: Text(
+          isRomanian ? 'Atenție!' : 'Warning!',
+          style: const TextStyle(color: chalkYellow, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          isRomanian
+              ? 'Ești sigur că vrei să părăsești jocul?\nTot scorul de până acum se va șterge definitiv!'
+              : 'Are you sure you want to leave?\nAll current scores will be lost forever!',
+          style: const TextStyle(color: chalkWhite, fontSize: 18),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: Text(isRomanian ? 'Anulează' : 'Cancel', style: const TextStyle(color: chalkWhite, fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: Text(isRomanian ? 'Da, ieși' : 'Yes, leave', style: const TextStyle(color: chalkRed, fontSize: 18)),
+          ),
+        ],
+      );
+    },
+  ) ?? false;
+}
+
 // --- ECRAN START JOCURI ---
 class HomePage extends StatelessWidget {
   final bool isRomanian;
@@ -336,7 +372,6 @@ class _PlayerNamesScreenState extends State<PlayerNamesScreen> {
                   }
                 }
                 
-                // RUTARE CĂTRE JOCUL CORECT
                 if (widget.game == 'Whist') {
                   Navigator.push(
                     context,
@@ -360,8 +395,12 @@ class _PlayerNamesScreenState extends State<PlayerNamesScreen> {
 }
 
 // ==========================================
-// ============= LOGICA WHIST ===============
+// ====== LOGICA WHIST (SINE STĂTĂTOR) ======
 // ==========================================
+int _calculateWhistScore(int bid, int made) {
+  if (bid == made) return 5 + made;
+  return -((bid - made).abs());
+}
 
 class WhistRoundData {
   final int cardCount;
@@ -408,11 +447,6 @@ class _WhistScoreBoardScreenState extends State<WhistScoreBoardScreen> {
     for (int i = 0; i < cardsPattern.length; i++) {
       _rounds.add(WhistRoundData(cardCount: cardsPattern[i], firstPlayerIndex: i % n, playerCount: n));
     }
-  }
-
-  int _calculateWhistScore(int bid, int made) {
-    if (bid == made) return 5 + made;
-    return -((bid - made).abs());
   }
 
   List<int> get _totals {
@@ -534,11 +568,7 @@ class _WhistScoreBoardScreenState extends State<WhistScoreBoardScreen> {
                   style: TextStyle(fontSize: 24, color: isBidding ? chalkYellow : chalkWhite),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.undo, size: 30),
-                onPressed: _undoLastAction,
-                color: chalkRed,
-              )
+              IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastAction, color: chalkRed)
             ],
           ),
           const SizedBox(height: 15),
@@ -650,10 +680,7 @@ class _WhistScoreBoardScreenState extends State<WhistScoreBoardScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('$bid  /  $made', style: const TextStyle(fontSize: 16)),
-                                      Text(
-                                        '${score > 0 ? '+$score' : score}',
-                                        style: TextStyle(fontSize: 20, color: score > 0 ? chalkYellow : chalkRed),
-                                      ),
+                                      Text('${score > 0 ? '+$score' : score}', style: TextStyle(fontSize: 20, color: score > 0 ? chalkYellow : chalkRed)),
                                     ],
                                   ),
                                 );
@@ -692,9 +719,12 @@ class _WhistScoreBoardScreenState extends State<WhistScoreBoardScreen> {
 class RentzRoundData {
   final int dealerIndex;
   final String gameName;
-  final List<int> scores;
+  bool isClosed;
+  Map<String, List<int>> inputs;
 
-  RentzRoundData({required this.dealerIndex, required this.gameName, required this.scores});
+  RentzRoundData({required this.dealerIndex, required this.gameName, required int playerCount})
+      : isClosed = false,
+        inputs = {};
 }
 
 class RentzScoreBoardScreen extends StatefulWidget {
@@ -709,99 +739,167 @@ class RentzScoreBoardScreen extends StatefulWidget {
 
 class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
   final List<RentzRoundData> _rounds = [];
-  String? _selectedGame;
-  late List<TextEditingController> _scoreControllers;
+  Map<String, List<TextEditingController>> _activeControllers = {};
 
-  // Jocurile oficiale de Rentz (fiecare jucător le va împărți o dată)
-  final List<String> _gamesRo = ['Popa de Roșu', 'Dame', 'Romburi', 'Levate', 'Totale', 'Rentz'];
-  final List<String> _gamesEn = ['King of Hearts', 'Queens', 'Diamonds', 'Tricks', 'Totals', 'Rentz'];
+  final List<String> _gamesRo = ['Popa de Roșu', 'Dame', 'Romburi', 'Levate', '10 de treflă', 'Whist', 'Totale', 'Rentz'];
+  final List<String> _gamesEn = ['King of Hearts', 'Queens', 'Diamonds', 'Levate', '10 of Clubs', 'Whist', 'Totals', 'Rentz'];
 
-  @override
-  void initState() {
-    super.initState();
-    _scoreControllers = List.generate(widget.playerNames.length, (index) => TextEditingController());
-  }
+  List<String> get _subGamesTotale => widget.isRomanian 
+      ? ['Levate', 'Dame', 'Romburi', 'Popa de Roșu'] 
+      : ['Levate', 'Queens', 'Diamonds', 'King of Hearts'];
 
   @override
   void dispose() {
-    for (var controller in _scoreControllers) {
-      controller.dispose();
-    }
+    _disposeControllers();
     super.dispose();
+  }
+
+  void _disposeControllers() {
+    for (var list in _activeControllers.values) {
+      for (var c in list) { c.dispose(); }
+    }
   }
 
   List<String> get _allGames => widget.isRomanian ? _gamesRo : _gamesEn;
   
-  int get _totalRoundsRequired => widget.playerNames.length * 6;
+  int get _totalRoundsRequired => widget.playerNames.length * 8;
   
   int get _currentDealerIndex {
-    if (_rounds.length >= _totalRoundsRequired) return widget.playerNames.length - 1;
-    return _rounds.length ~/ 6; // La fiecare 6 jocuri se schimbă dealerul
+    int closedRounds = _rounds.where((r) => r.isClosed).length;
+    if (closedRounds >= _totalRoundsRequired) return widget.playerNames.length - 1;
+    return closedRounds % widget.playerNames.length;
   }
 
-  List<String> get _availableGamesForCurrentDealer {
-    if (_rounds.length >= _totalRoundsRequired) return [];
-    List<String> playedByDealer = _rounds
+  bool get _isRoundActive => _rounds.isNotEmpty && !_rounds.last.isClosed;
+
+  List<String> get _playedGamesForCurrentDealer {
+    return _rounds
         .where((r) => r.dealerIndex == _currentDealerIndex)
         .map((r) => r.gameName)
         .toList();
-    return _allGames.where((game) => !playedByDealer.contains(game)).toList();
+  }
+
+  // --- MOTORUL CENTRAL DE CALCULARE ---
+  int _computePoints(String gameName, int val, int totalPlayers) {
+    if (gameName == 'Whist') return val * 50;
+    if (gameName == '10 de treflă' || gameName == '10 of Clubs') return val * 200;
+    if (gameName == 'Popa de Roșu' || gameName == 'King of Hearts') return val * -200;
+    if (gameName == 'Dame' || gameName == 'Queens') return val * -50;
+    if (gameName == 'Romburi' || gameName == 'Diamonds') return val * -30;
+    if (gameName == 'Levate') return val * -50;
+    if (gameName == 'Rentz') return (totalPlayers - val) * 100; // Formula ta: (N-Loc)*100
+    return 0; 
   }
 
   List<int> get _totals {
-    List<int> totals = List.filled(widget.playerNames.length, 0);
-    for (var round in _rounds) {
-      for (int i = 0; i < widget.playerNames.length; i++) {
-        totals[i] += round.scores[i];
+    int n = widget.playerNames.length;
+    List<int> totals = List.filled(n, 0);
+    
+    for (var r in _rounds) {
+      if (r.isClosed) {
+        for (var sg in r.inputs.keys) {
+          for (int p = 0; p < n; p++) {
+             totals[p] += _computePoints(sg == 'main' ? r.gameName : sg, r.inputs[sg]![p], n);
+          }
+        }
+      } else {
+        for (var sg in _activeControllers.keys) {
+          for (int p = 0; p < n; p++) {
+             int val = int.tryParse(_activeControllers[sg]![p].text) ?? 0;
+             totals[p] += _computePoints(sg == 'main' ? r.gameName : sg, val, n);
+          }
+        }
       }
     }
     return totals;
   }
 
-  void _undoLastAction() {
-    if (_rounds.isNotEmpty) {
-      setState(() {
-        _rounds.removeLast();
-        _selectedGame = null;
-        for (var c in _scoreControllers) { c.clear(); }
+  void _startGame(String gameName) {
+    _disposeControllers();
+    _activeControllers.clear();
+
+    List<String> neededControllers = (gameName == 'Totale' || gameName == 'Totals') ? _subGamesTotale : ['main'];
+
+    for (var sg in neededControllers) {
+      _activeControllers[sg] = List.generate(widget.playerNames.length, (index) {
+        var c = TextEditingController();
+        c.addListener(() => setState(() {}));
+        return c;
       });
-    }
-  }
-
-  void _saveRentzRound() {
-    if (_selectedGame == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(widget.isRomanian ? 'Selectează tipul jocului!' : 'Select the game type!'),
-      ));
-      return;
-    }
-
-    List<int> newScores = [];
-    for (int i = 0; i < widget.playerNames.length; i++) {
-      String text = _scoreControllers[i].text.trim();
-      if (text.isEmpty) text = '0'; // default la 0 dacă e lăsat gol
-      int? val = int.tryParse(text);
-      if (val == null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.isRomanian ? 'Scor invalid la ${widget.playerNames[i]}!' : 'Invalid score for ${widget.playerNames[i]}!'),
-        ));
-        return;
-      }
-      newScores.add(val);
     }
 
     setState(() {
       _rounds.add(RentzRoundData(
         dealerIndex: _currentDealerIndex,
-        gameName: _selectedGame!,
-        scores: newScores,
+        gameName: gameName,
+        playerCount: widget.playerNames.length,
       ));
-      _selectedGame = null;
-      for (var c in _scoreControllers) { c.clear(); }
     });
   }
 
-  Widget _buildInputPanel() {
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: chalkRed));
+  }
+
+  void _closeActiveRound() {
+    if (!_isRoundActive) return;
+    RentzRoundData r = _rounds.last;
+    int n = widget.playerNames.length;
+    
+    Map<String, List<int>> tempInputs = {};
+
+    for (var sg in _activeControllers.keys) {
+      List<int> vals = [];
+      int sum = 0;
+      for (int p = 0; p < n; p++) {
+        int val = int.tryParse(_activeControllers[sg]![p].text) ?? 0;
+        vals.add(val);
+        sum += val;
+      }
+      
+      String gameToCheck = sg == 'main' ? r.gameName : sg;
+      
+      if (gameToCheck == 'Whist' || gameToCheck == 'Levate') {
+        if (sum != 8) { _showError(widget.isRomanian ? 'Suma la $gameToCheck trebuie să fie EXACT 8!' : 'Sum for $gameToCheck must be EXACTLY 8!'); return; }
+      } else if (gameToCheck == 'Dame' || gameToCheck == 'Queens') {
+        if (sum != 4) { _showError(widget.isRomanian ? 'Suma la $gameToCheck trebuie să fie EXACT 4!' : 'Sum for $gameToCheck must be EXACTLY 4!'); return; }
+      } else if (gameToCheck == 'Romburi' || gameToCheck == 'Diamonds') {
+        if (sum != 13) { _showError(widget.isRomanian ? 'Suma la $gameToCheck trebuie să fie EXACT 13!' : 'Sum for $gameToCheck must be EXACTLY 13!'); return; }
+      } else if (gameToCheck == 'Popa de Roșu' || gameToCheck == 'King of Hearts' || gameToCheck == '10 de treflă' || gameToCheck == '10 of Clubs') {
+        if (sum != 1) { _showError(widget.isRomanian ? 'La $gameToCheck un singur jucător trebuie să aibă valoarea 1!' : 'For $gameToCheck exactly one player must have 1!'); return; }
+      } else if (gameToCheck == 'Rentz') {
+        List<int> sorted = List.from(vals)..sort();
+        bool ok = true;
+        for (int i = 0; i < n; i++) if (sorted[i] != i + 1) ok = false;
+        if (!ok) { _showError(widget.isRomanian ? 'La Rentz trebuie introduse locurile de la 1 la $n fără dubluri!' : 'For Rentz enter ranks from 1 to $n without duplicates!'); return; }
+      }
+      
+      tempInputs[sg] = vals;
+    }
+
+    setState(() {
+      r.inputs = tempInputs;
+      for (var sg in _activeControllers.keys) {
+         for (int p = 0; p < n; p++) {
+            if (_activeControllers[sg]![p].text.isEmpty) _activeControllers[sg]![p].text = '0';
+         }
+      }
+      r.isClosed = true;
+    });
+  }
+
+  void _undoLastRound() {
+    if (_rounds.isNotEmpty) {
+      setState(() {
+        _rounds.removeLast();
+        _activeControllers.clear();
+      });
+    }
+  }
+
+  Widget _buildGameSelectionPanel() {
+    if (_isRoundActive) return const SizedBox.shrink();
+
     if (_rounds.length >= _totalRoundsRequired) {
       return Container(
         padding: const EdgeInsets.all(20),
@@ -810,14 +908,14 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(widget.isRomanian ? 'S-A TERMINAT! 🎉' : 'IT\'S OVER! 🎉', style: const TextStyle(fontSize: 24, color: chalkYellow)),
-            IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastAction, color: chalkRed)
+            IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastRound, color: chalkRed)
           ],
         ),
       );
     }
 
     String dealerName = widget.playerNames[_currentDealerIndex];
-    List<String> available = _availableGamesForCurrentDealer;
+    List<String> played = _playedGamesForCurrentDealer;
 
     return Container(
       padding: const EdgeInsets.only(top: 15, bottom: 25, left: 16, right: 16),
@@ -833,72 +931,179 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Dealer: $dealerName',
+                widget.isRomanian ? 'Alege jocul: $dealerName' : 'Choose game: $dealerName',
                 style: const TextStyle(fontSize: 24, color: chalkYellow, fontWeight: FontWeight.bold),
               ),
               if (_rounds.isNotEmpty)
-                IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastAction, color: chalkRed)
+                IconButton(icon: const Icon(Icons.undo, size: 30), onPressed: _undoLastRound, color: chalkRed)
             ],
           ),
-          const SizedBox(height: 10),
-          
-          // Selectare joc
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: available.map((game) {
-              bool isSelected = _selectedGame == game;
-              return ChoiceChip(
-                label: Text(game, style: TextStyle(color: isSelected ? boardGreen : chalkWhite, fontSize: 16)),
-                selected: isSelected,
-                selectedColor: chalkYellow,
-                backgroundColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(color: isSelected ? chalkYellow : chalkWhite),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                onSelected: (selected) {
-                  setState(() => _selectedGame = selected ? game : null);
-                },
-              );
-            }).toList(),
-          ),
-          
           const SizedBox(height: 15),
           
-          // Căsuțe pentru scoruri
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: List.generate(widget.playerNames.length, (index) {
-              return SizedBox(
-                width: 80,
-                child: TextField(
-                  controller: _scoreControllers[index],
-                  keyboardType: const TextInputType.numberWithOptions(signed: true),
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.architectsDaughter(fontSize: 20, color: chalkWhite),
-                  decoration: InputDecoration(
-                    labelText: widget.playerNames[index],
-                    labelStyle: TextStyle(color: chalkYellow.withOpacity(0.8), fontSize: 14),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 5),
-                    enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: chalkWhite)),
-                    focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: chalkYellow, width: 2)),
-                  ),
+            children: _allGames.map((game) {
+              bool isDisabled = played.contains(game);
+              
+              return OutlinedButton(
+                onPressed: isDisabled ? null : () => _startGame(game),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: isDisabled ? Colors.white30 : chalkWhite,
+                  side: BorderSide(color: isDisabled ? Colors.transparent : chalkWhite, width: 2),
+                  backgroundColor: isDisabled ? Colors.black26 : Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
+                child: Text(game, style: const TextStyle(fontSize: 18)),
               );
-            }),
-          ),
-          
-          const SizedBox(height: 15),
-          ElevatedButton(
-            onPressed: _saveRentzRound,
-            style: chalkButtonStyle.copyWith(
-              backgroundColor: MaterialStateProperty.all(chalkWhite.withOpacity(0.1)),
-            ),
-            child: Text(widget.isRomanian ? 'Salvează Runda' : 'Save Round', style: const TextStyle(color: chalkYellow)),
+            }).toList(),
           ),
         ],
+      ),
+    );
+  }
+
+  // --- MOTORUL DE RÂNDURI PENTRU DATATABLE ---
+  List<DataRow> _buildTableRows() {
+    int n = widget.playerNames.length;
+    List<DataRow> rows = [];
+
+    for (var r in _rounds) {
+      bool isActive = !r.isClosed;
+
+      if (r.gameName == 'Totale' || r.gameName == 'Totals') {
+        // HEADER-UL PENTRU TOTALE
+        rows.add(DataRow(
+          color: MaterialStateProperty.all(isActive ? chalkWhite.withOpacity(0.1) : Colors.transparent),
+          cells: [
+            DataCell(Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.gameName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: chalkWhite)),
+                Text(widget.playerNames[r.dealerIndex], style: const TextStyle(fontSize: 14, color: chalkYellow)),
+                if (isActive) ...[
+                  const SizedBox(height: 5),
+                  OutlinedButton(
+                    onPressed: _closeActiveRound,
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), side: const BorderSide(color: chalkYellow)),
+                    child: const Text('✔️ GATA', style: TextStyle(color: chalkYellow, fontSize: 12)),
+                  ),
+                  const SizedBox(height: 5),
+                  OutlinedButton( // <--- BUTONUL NOU DE CANCEL AICI
+                    onPressed: _undoLastRound,
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), side: const BorderSide(color: chalkRed)),
+                    child: Text(widget.isRomanian ? '❌ ANULEAZĂ' : '❌ CANCEL', style: const TextStyle(color: chalkRed, fontSize: 12)),
+                  )
+                ]
+              ],
+            )),
+            // SUMA pentru fiecare jucator in runda asta de totale
+            ...List.generate(n, (p) {
+               int sum = 0;
+               if (isActive) {
+                 for (var sg in _subGamesTotale) {
+                    int val = int.tryParse(_activeControllers[sg]![p].text) ?? 0;
+                    sum += _computePoints(sg, val, n);
+                 }
+               } else {
+                 for (var sg in _subGamesTotale) {
+                    sum += _computePoints(sg, r.inputs[sg]![p], n);
+                 }
+               }
+               return DataCell(Text('${sum > 0 ? '+' : ''}$sum', style: const TextStyle(color: chalkYellow, fontWeight: FontWeight.bold, fontSize: 18)));
+            })
+          ]
+        ));
+
+        // RÂNDURILE SUBORDONATE (Levate, Dame, etc.)
+        for (var sg in _subGamesTotale) {
+          rows.add(DataRow(
+            color: MaterialStateProperty.all(isActive ? chalkWhite.withOpacity(0.05) : Colors.transparent),
+            cells: [
+              DataCell(Padding(padding: const EdgeInsets.only(left: 15), child: Text("↳ $sg", style: const TextStyle(color: Colors.white70, fontSize: 14)))),
+              ...List.generate(n, (p) {
+                 if (isActive) {
+                    return DataCell(SizedBox(width: 50, child: _buildCellTextField(_activeControllers[sg]![p], '0')));
+                 } else {
+                    int raw = r.inputs[sg]![p];
+                    int pts = _computePoints(sg, raw, n);
+                    return DataCell(Column(
+                       mainAxisAlignment: MainAxisAlignment.center,
+                       children: [
+                          Text('$raw', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                          Text('${pts > 0 ? '+' : ''}$pts', style: TextStyle(color: pts > 0 ? chalkYellow : (pts < 0 ? chalkRed : chalkWhite)))
+                       ],
+                    ));
+                 }
+              })
+            ]
+          ));
+        }
+
+      } else {
+        // JOC NORMAL DE RENTZ (Un singur rând)
+        rows.add(DataRow(
+          color: MaterialStateProperty.all(isActive ? chalkWhite.withOpacity(0.08) : Colors.transparent),
+          cells: [
+            DataCell(Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.gameName, style: const TextStyle(fontSize: 18, color: chalkWhite, fontWeight: FontWeight.bold)),
+                Text(widget.playerNames[r.dealerIndex], style: const TextStyle(fontSize: 14, color: chalkYellow)),
+                if (isActive) ...[
+                  const SizedBox(height: 5),
+                  OutlinedButton(
+                    onPressed: _closeActiveRound,
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), side: const BorderSide(color: chalkYellow)),
+                    child: const Text('✔️ GATA', style: TextStyle(color: chalkYellow, fontSize: 12)),
+                  ),
+                  const SizedBox(height: 5),
+                  OutlinedButton( // <--- BUTONUL NOU DE CANCEL AICI
+                    onPressed: _undoLastRound,
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), side: const BorderSide(color: chalkRed)),
+                    child: Text(widget.isRomanian ? '❌ ANULEAZĂ' : '❌ CANCEL', style: const TextStyle(color: chalkRed, fontSize: 12)),
+                  )
+                ]
+              ],
+            )),
+            ...List.generate(n, (p) {
+               if (isActive) {
+                  return DataCell(SizedBox(width: 50, child: _buildCellTextField(_activeControllers['main']![p], r.gameName == 'Rentz' ? 'Loc' : '0')));
+               } else {
+                  int raw = r.inputs['main']![p];
+                  int pts = _computePoints(r.gameName, raw, n);
+                  return DataCell(Column(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                        Text(r.gameName == 'Rentz' ? 'Loc $raw' : '$raw buc', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                        Text('${pts > 0 ? '+' : ''}$pts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: pts > 0 ? chalkYellow : (pts < 0 ? chalkRed : chalkWhite)))
+                     ],
+                  ));
+               }
+            })
+          ]
+        ));
+      }
+    }
+    return rows;
+  }
+
+  Widget _buildCellTextField(TextEditingController controller, String hint) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(signed: true),
+      textAlign: TextAlign.center,
+      style: GoogleFonts.architectsDaughter(fontSize: 18, color: chalkWhite),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white30, fontSize: 14),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white30)),
+        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: chalkYellow, width: 2)),
       ),
     );
   }
@@ -926,7 +1131,8 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                     columnSpacing: 25,
                     headingRowColor: MaterialStateProperty.all(Colors.black.withOpacity(0.3)), 
                     dividerThickness: 1,
-                    dataRowMinHeight: 40, 
+                    dataRowMinHeight: 60, 
+                    dataRowMaxHeight: 140, // <-- Am mărit spațiul maxim ca să aibă loc cele două butoane confortabil
                     columns: [
                       DataColumn(label: Text(widget.isRomanian ? 'Joc' : 'Game', style: const TextStyle(fontSize: 20, color: chalkYellow))),
                       ...widget.playerNames.map((name) => DataColumn(
@@ -934,19 +1140,7 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                           )),
                     ],
                     rows: [
-                      ..._rounds.map((r) {
-                        return DataRow(
-                          cells: [
-                            DataCell(Text(r.gameName, style: const TextStyle(fontSize: 16, color: Colors.white70))),
-                            ...r.scores.map((score) => DataCell(
-                              Text(
-                                '${score > 0 ? '+$score' : score}', 
-                                style: TextStyle(fontSize: 18, color: score > 0 ? chalkYellow : (score < 0 ? chalkRed : chalkWhite))
-                              )
-                            )),
-                          ],
-                        );
-                      }),
+                      ..._buildTableRows(),
                       DataRow(
                         color: MaterialStateProperty.all(Colors.black.withOpacity(0.3)),
                         cells: [
@@ -961,46 +1155,10 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                 ),
               ),
             ),
-            _buildInputPanel(),
+            _buildGameSelectionPanel(),
           ],
         ),
       ),
     );
   }
-}
-
-// --- FUNCȚIE GLOBALĂ PENTRU DIALOGUL DE IEȘIRE ---
-Future<bool> showExitDialog(BuildContext context, bool isRomanian) async {
-  return await showDialog<bool>(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        backgroundColor: const Color(0xFF1B291D), 
-        shape: RoundedRectangleBorder(
-          side: const BorderSide(color: chalkWhite, width: 2),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        title: Text(
-          isRomanian ? 'Atenție!' : 'Warning!',
-          style: const TextStyle(color: chalkYellow, fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          isRomanian
-              ? 'Ești sigur că vrei să părăsești jocul?\nTot scorul de până acum se va șterge definitiv!'
-              : 'Are you sure you want to leave?\nAll current scores will be lost forever!',
-          style: const TextStyle(color: chalkWhite, fontSize: 18),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false), 
-            child: Text(isRomanian ? 'Anulează' : 'Cancel', style: const TextStyle(color: chalkWhite, fontSize: 18)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true), 
-            child: Text(isRomanian ? 'Da, ieși' : 'Yes, leave', style: const TextStyle(color: chalkRed, fontSize: 18)),
-          ),
-        ],
-      );
-    },
-  ) ?? false;
 }
