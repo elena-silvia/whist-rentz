@@ -2,8 +2,15 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flag/flag.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'firebase_options.dart'; 
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const ScoreKeeperApp());
 }
 
@@ -46,7 +53,423 @@ class ScoreKeeperApp extends StatelessWidget {
   }
 }
 
-// --- ECRANUL DE LIMBĂ ---
+// =========================================================
+// ECRANE MULTIPLAYER (LOBBY & FIREBASE)
+// =========================================================
+
+class ModeSelectionScreen extends StatelessWidget {
+  final String game;
+  final bool isRomanian;
+
+  const ModeSelectionScreen({super.key, required this.game, required this.isRomanian});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(game)),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            OutlinedButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => PlayerSelectionScreen(game: game, isRomanian: isRomanian)),
+              ),
+              style: chalkButtonStyle,
+              child: Text(isRomanian ? 'Singleplayer (Un singur telefon)' : 'Singleplayer (One device)'),
+            ),
+            const SizedBox(height: 30),
+            OutlinedButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => MultiplayerMenuScreen(game: game, isRomanian: isRomanian)),
+              ),
+              style: chalkButtonStyle,
+              child: Text(isRomanian ? 'Multiplayer (Mai multe telefoane)' : 'Multiplayer (Multiple devices)'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MultiplayerMenuScreen extends StatelessWidget {
+  final String game;
+  final bool isRomanian;
+
+  const MultiplayerMenuScreen({super.key, required this.game, required this.isRomanian});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(isRomanian ? 'Multiplayer Online' : 'Online Multiplayer')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            OutlinedButton(
+              onPressed: () => _showHostDialog(context),
+              style: chalkButtonStyle,
+              child: Text(isRomanian ? 'Creează Joc (Host)' : 'Create Game (Host)'),
+            ),
+            const SizedBox(height: 30),
+            OutlinedButton(
+              onPressed: () => _showJoinDialog(context),
+              style: chalkButtonStyle,
+              child: Text(isRomanian ? 'Intră în Joc' : 'Join Game'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showHostDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: boardGreen,
+        title: Text(isRomanian ? 'Numele tău' : 'Your Name', style: TextStyle(color: chalkWhite)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(color: chalkYellow),
+          decoration: InputDecoration(
+            hintText: isRomanian ? 'Ex: Andrei' : 'Ex: John',
+            hintStyle: TextStyle(color: Colors.white54),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: chalkWhite)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: chalkYellow)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              String name = controller.text.trim();
+              if (name.isEmpty) return;
+              
+              String roomCode = _generateRoomCode();
+              DatabaseReference roomRef = FirebaseDatabase.instance.ref('rooms/$roomCode');
+              
+              await roomRef.set({
+                'gameType': game,
+                'status': 'lobby',
+                'hostName': name,
+                'createdAt': ServerValue.timestamp,
+                'players': {
+                  'p1': {'name': name, 'id': 'p1'}
+                }
+              });
+
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => LobbyScreen(roomCode: roomCode, myId: 'p1', isRomanian: isRomanian)),
+              );
+            },
+            child: Text(isRomanian ? 'Creează' : 'Create', style: TextStyle(color: chalkYellow)),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showJoinDialog(BuildContext context) {
+    final codeController = TextEditingController();
+    final nameController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: boardGreen,
+        title: Text(isRomanian ? 'Intră în cameră' : 'Join Room', style: TextStyle(color: chalkWhite)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: codeController, 
+              style: TextStyle(color: chalkYellow),
+              decoration: InputDecoration(hintText: isRomanian ? 'Cod Cameră' : 'Room Code', hintStyle: TextStyle(color: Colors.white54))
+            ),
+            TextField(
+              controller: nameController, 
+              style: TextStyle(color: chalkYellow),
+              decoration: InputDecoration(hintText: isRomanian ? 'Numele tău' : 'Your Name', hintStyle: TextStyle(color: Colors.white54))
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              String code = codeController.text.trim().toUpperCase();
+              String name = nameController.text.trim();
+              if (code.isEmpty || name.isEmpty) return;
+
+              DatabaseReference roomRef = FirebaseDatabase.instance.ref('rooms/$code');
+              DataSnapshot snapshot = await roomRef.get();
+
+              if (snapshot.exists) {
+                Map players = snapshot.child('players').value as Map;
+                if (players.length >= 6) return; 
+
+                String newId = 'p${players.length + 1}';
+                await roomRef.child('players/$newId').set({'name': name, 'id': newId});
+
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => LobbyScreen(roomCode: code, myId: newId, isRomanian: isRomanian)),
+                );
+              }
+            },
+            child: Text(isRomanian ? 'Intră' : 'Join', style: TextStyle(color: chalkYellow)),
+          )
+        ],
+      ),
+    );
+  }
+
+  String _generateRoomCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ123456789';
+    return List.generate(4, (index) => chars[Random().nextInt(chars.length)]).join();
+  }
+}
+class LobbyScreen extends StatelessWidget {
+  final String roomCode;
+  final String myId;
+  final bool isRomanian;
+
+  const LobbyScreen({super.key, required this.roomCode, required this.myId, required this.isRomanian});
+
+  @override
+  Widget build(BuildContext context) {
+    DatabaseReference roomRef = FirebaseDatabase.instance.ref('rooms/$roomCode');
+
+    return Scaffold(
+      appBar: AppBar(title: Text('Cod: $roomCode')),
+      body: StreamBuilder(
+        stream: roomRef.onValue,
+        builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+          if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+            return const Center(child: CircularProgressIndicator(color: chalkWhite));
+          }
+
+          Map roomData = snapshot.data!.snapshot.value as Map;
+          Map players = roomData['players'] as Map;
+          List playerList = players.values.toList();
+          bool isHost = myId == 'p1';
+
+          // --- NAVIGARE AUTOMATĂ CÂND HOST-UL DĂ START ---
+          if (roomData['status'] == 'playing') {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (ModalRoute.of(context)?.isCurrent ?? false) {
+                if (roomData['gameType'] == 'Whist') {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => MultiplayerWhistScreen(roomCode: roomCode, myId: myId, isRomanian: isRomanian)),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rentz Multiplayer urmează!")));
+                }
+              }
+            });
+          }
+
+          return Column(
+            children: [
+              const SizedBox(height: 40),
+              Text(
+                isRomanian ? 'Așteptăm jucători...' : 'Waiting for players...',
+                style: const TextStyle(fontSize: 28, color: chalkYellow),
+              ),
+              const SizedBox(height: 10),
+              const CircularProgressIndicator(color: chalkYellow),
+              const SizedBox(height: 40),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: playerList.length,
+                  itemBuilder: (context, index) {
+                    return ListTile(
+                      leading: const Icon(Icons.person, color: chalkWhite),
+                      title: Text(playerList[index]['name'], style: const TextStyle(fontSize: 24)),
+                      trailing: playerList[index]['id'] == 'p1' ? const Icon(Icons.star, color: chalkYellow) : null,
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(30.0),
+                child: isHost
+                    ? OutlinedButton(
+                        // AICI GENERĂM LOGICA DE JOC PE SERVER CÂND DĂM START
+                        onPressed: playerList.length >= 3 && playerList.length <= 6
+                            ? () async {
+                                int n = playerList.length;
+                                List<int> pattern = [];
+                                for (int i = 0; i < n; i++) pattern.add(1);
+                                for (int i = 2; i <= 7; i++) pattern.add(i);
+                                for (int i = 0; i < n; i++) pattern.add(8);
+                                for (int i = 7; i >= 2; i--) pattern.add(i);
+                                for (int i = 0; i < n; i++) pattern.add(1);
+
+                                List<String> pIds = playerList.map((p) => p['id'].toString()).toList();
+                                pIds.sort(); // p1, p2, p3...
+
+                                List<Map<String, dynamic>> initialRounds = [];
+                                for(int i=0; i<pattern.length; i++) {
+                                  initialRounds.add({
+                                    'cardCount': pattern[i],
+                                    'firstPlayerIndex': i % n,
+                                    'bids': {},
+                                    'made': {},
+                                    'isBiddingComplete': false,
+                                    'isRoundComplete': false,
+                                  });
+                                }
+
+                                await roomRef.child('gameState').set({
+                                  'rounds': initialRounds,
+                                  'activeRoundIndex': 0,
+                                  'pIds': pIds,
+                                });
+                                await roomRef.update({'status': 'playing'});
+                              }
+                            : null,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: (playerList.length >= 3 && playerList.length <= 6) ? chalkWhite : Colors.white24, width: 2),
+                          backgroundColor: (playerList.length >= 3 && playerList.length <= 6) ? Colors.transparent : Colors.black26,
+                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                        ),
+                        child: Text(
+                          isRomanian ? 'Începe Jocul' : 'Start Game',
+                          style: TextStyle(color: (playerList.length >= 3 && playerList.length <= 6) ? chalkWhite : Colors.white24, fontSize: 24),
+                        ),
+                      )
+                    : Text(
+                        isRomanian ? 'Așteaptă Host-ul să dea start...' : 'Waiting for host to start...',
+                        style: const TextStyle(fontSize: 18, fontStyle: FontStyle.italic),
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// =========================================================
+// WIDGET-URI DE BAZA (FUNDAL & DIALOGURI)
+// =========================================================
+
+class ChalkboardBackground extends StatelessWidget {
+  final Widget child;
+  const ChalkboardBackground({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: boardGreen,
+      child: CustomPaint(
+        painter: ChalkDustPainter(),
+        child: child,
+      ),
+    );
+  }
+}
+
+class ChalkDustPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final random = Random(42); 
+    final smudgePaint = Paint()
+      ..color = Colors.white.withOpacity(0.015)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40);
+
+    for (int i = 0; i < 15; i++) {
+      final dx = random.nextDouble() * size.width;
+      final dy = random.nextDouble() * size.height;
+      final width = random.nextDouble() * 300 + 100;
+      final height = random.nextDouble() * 100 + 50;
+      
+      canvas.save();
+      canvas.translate(dx, dy);
+      canvas.rotate(random.nextDouble() * pi);
+      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: width, height: height), smudgePaint);
+      canvas.restore();
+    }
+
+    final dustPaint = Paint()
+      ..color = Colors.white.withOpacity(0.04)
+      ..strokeWidth = 1.0;
+      
+    for (int i = 0; i < 300; i++) {
+      final dx = random.nextDouble() * size.width;
+      final dy = random.nextDouble() * size.height;
+      canvas.drawCircle(Offset(dx, dy), random.nextDouble() * 1.5, dustPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+final ButtonStyle chalkButtonStyle = OutlinedButton.styleFrom(
+  foregroundColor: chalkWhite,
+  side: const BorderSide(color: chalkWhite, width: 2.5),
+  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  textStyle: GoogleFonts.architectsDaughter(fontSize: 26, fontWeight: FontWeight.bold),
+);
+
+final ButtonStyle chalkCircleStyle = OutlinedButton.styleFrom(
+  foregroundColor: chalkWhite,
+  side: const BorderSide(color: chalkWhite, width: 2.5),
+  shape: const CircleBorder(),
+  padding: const EdgeInsets.all(24),
+  textStyle: GoogleFonts.architectsDaughter(fontSize: 28, fontWeight: FontWeight.bold),
+);
+
+Future<bool> showExitDialog(BuildContext context, bool isRomanian) async {
+  return await showDialog<bool>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF1B291D), 
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: chalkWhite, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        title: Text(
+          isRomanian ? 'Atenție!' : 'Warning!',
+          style: const TextStyle(color: chalkYellow, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          isRomanian
+              ? 'Ești sigur că vrei să părăsești jocul?\nTot scorul de până acum se va șterge definitiv!'
+              : 'Are you sure you want to leave?\nAll current scores will be lost forever!',
+          style: const TextStyle(color: chalkWhite, fontSize: 18),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: Text(isRomanian ? 'Anulează' : 'Cancel', style: const TextStyle(color: chalkWhite, fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: Text(isRomanian ? 'Da, ieși' : 'Yes, leave', style: const TextStyle(color: chalkRed, fontSize: 18)),
+          ),
+        ],
+      );
+    },
+  ) ?? false;
+}
+
+// =========================================================
+// ECRANE DE BAZA
+// =========================================================
+
 class LanguageSelectionScreen extends StatelessWidget {
   const LanguageSelectionScreen({super.key});
 
@@ -113,113 +536,6 @@ class LanguageSelectionScreen extends StatelessWidget {
   }
 }
 
-// --- WIDGET FUNDAL DE TABLĂ ---
-class ChalkboardBackground extends StatelessWidget {
-  final Widget child;
-  const ChalkboardBackground({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: boardGreen,
-      child: CustomPaint(
-        painter: ChalkDustPainter(),
-        child: child,
-      ),
-    );
-  }
-}
-
-class ChalkDustPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final random = Random(42);
-    final smudgePaint = Paint()
-      ..color = Colors.white.withOpacity(0.015)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40);
-
-    for (int i = 0; i < 15; i++) {
-      final dx = random.nextDouble() * size.width;
-      final dy = random.nextDouble() * size.height;
-      final width = random.nextDouble() * 300 + 100;
-      final height = random.nextDouble() * 100 + 50;
-      
-      canvas.save();
-      canvas.translate(dx, dy);
-      canvas.rotate(random.nextDouble() * pi);
-      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: width, height: height), smudgePaint);
-      canvas.restore();
-    }
-
-    final dustPaint = Paint()
-      ..color = Colors.white.withOpacity(0.04)
-      ..strokeWidth = 1.0;
-      
-    for (int i = 0; i < 300; i++) {
-      final dx = random.nextDouble() * size.width;
-      final dy = random.nextDouble() * size.height;
-      canvas.drawCircle(Offset(dx, dy), random.nextDouble() * 1.5, dustPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// --- STILURI BUTOANE CRETĂ ---
-final ButtonStyle chalkButtonStyle = OutlinedButton.styleFrom(
-  foregroundColor: chalkWhite,
-  side: const BorderSide(color: chalkWhite, width: 2.5),
-  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-  textStyle: GoogleFonts.architectsDaughter(fontSize: 26, fontWeight: FontWeight.bold),
-);
-
-final ButtonStyle chalkCircleStyle = OutlinedButton.styleFrom(
-  foregroundColor: chalkWhite,
-  side: const BorderSide(color: chalkWhite, width: 2.5),
-  shape: const CircleBorder(),
-  padding: const EdgeInsets.all(24),
-  textStyle: GoogleFonts.architectsDaughter(fontSize: 28, fontWeight: FontWeight.bold),
-);
-
-// --- FUNCȚIE GLOBALĂ PENTRU DIALOGUL DE IEȘIRE ---
-Future<bool> showExitDialog(BuildContext context, bool isRomanian) async {
-  return await showDialog<bool>(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        backgroundColor: const Color(0xFF1B291D), 
-        shape: RoundedRectangleBorder(
-          side: const BorderSide(color: chalkWhite, width: 2),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        title: Text(
-          isRomanian ? 'Atenție!' : 'Warning!',
-          style: const TextStyle(color: chalkYellow, fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          isRomanian
-              ? 'Ești sigur că vrei să părăsești jocul?\nTot scorul de până acum se va șterge definitiv!'
-              : 'Are you sure you want to leave?\nAll current scores will be lost forever!',
-          style: const TextStyle(color: chalkWhite, fontSize: 18),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false), 
-            child: Text(isRomanian ? 'Anulează' : 'Cancel', style: const TextStyle(color: chalkWhite, fontSize: 18)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true), 
-            child: Text(isRomanian ? 'Da, ieși' : 'Yes, leave', style: const TextStyle(color: chalkRed, fontSize: 18)),
-          ),
-        ],
-      );
-    },
-  ) ?? false;
-}
-
-// --- ECRAN START JOCURI ---
 class HomePage extends StatelessWidget {
   final bool isRomanian;
   const HomePage({super.key, required this.isRomanian});
@@ -246,7 +562,7 @@ class HomePage extends StatelessWidget {
             OutlinedButton(
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => PlayerSelectionScreen(game: 'Whist', isRomanian: isRomanian)),
+                MaterialPageRoute(builder: (context) => ModeSelectionScreen(game: 'Whist', isRomanian: isRomanian)),
               ),
               style: chalkButtonStyle.copyWith(minimumSize: MaterialStateProperty.all(const Size(200, 60))),
               child: const Text('Whist'),
@@ -255,7 +571,7 @@ class HomePage extends StatelessWidget {
             OutlinedButton(
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => PlayerSelectionScreen(game: 'Rentz', isRomanian: isRomanian)),
+                MaterialPageRoute(builder: (context) => ModeSelectionScreen(game: 'Rentz', isRomanian: isRomanian)),
               ),
               style: chalkButtonStyle.copyWith(minimumSize: MaterialStateProperty.all(const Size(200, 60))),
               child: const Text('Rentz'),
@@ -266,6 +582,10 @@ class HomePage extends StatelessWidget {
     );
   }
 }
+
+// =========================================================
+// LOGICA SINGLEPLAYER
+// =========================================================
 
 class PlayerSelectionScreen extends StatelessWidget {
   final String game;
@@ -394,9 +714,7 @@ class _PlayerNamesScreenState extends State<PlayerNamesScreen> {
   }
 }
 
-// ==========================================
-// ====== LOGICA WHIST (SINE STĂTĂTOR) ======
-// ==========================================
+// --- LOGICA WHIST ---
 int _calculateWhistScore(int bid, int made) {
   if (bid == made) return 5 + made;
   return -((bid - made).abs());
@@ -711,11 +1029,7 @@ class _WhistScoreBoardScreenState extends State<WhistScoreBoardScreen> {
   }
 }
 
-
-// ==========================================
-// ============= LOGICA RENTZ ===============
-// ==========================================
-
+// --- LOGICA RENTZ ---
 class RentzRoundData {
   final int dealerIndex;
   final String gameName;
@@ -779,7 +1093,6 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
         .toList();
   }
 
-  // --- MOTORUL CENTRAL DE CALCULARE ---
   int _computePoints(String gameName, int val, int totalPlayers) {
     if (gameName == 'Whist') return val * 50;
     if (gameName == '10 de treflă' || gameName == '10 of Clubs') return val * 200;
@@ -787,7 +1100,7 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
     if (gameName == 'Dame' || gameName == 'Queens') return val * -50;
     if (gameName == 'Romburi' || gameName == 'Diamonds') return val * -30;
     if (gameName == 'Levate') return val * -50;
-    if (gameName == 'Rentz') return (totalPlayers - val) * 100; // Formula ta: (N-Loc)*100
+    if (gameName == 'Rentz') return (totalPlayers - val) * 100; 
     return 0; 
   }
 
@@ -964,7 +1277,6 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
     );
   }
 
-  // --- MOTORUL DE RÂNDURI PENTRU DATATABLE ---
   List<DataRow> _buildTableRows() {
     int n = widget.playerNames.length;
     List<DataRow> rows = [];
@@ -973,7 +1285,6 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
       bool isActive = !r.isClosed;
 
       if (r.gameName == 'Totale' || r.gameName == 'Totals') {
-        // HEADER-UL PENTRU TOTALE
         rows.add(DataRow(
           color: MaterialStateProperty.all(isActive ? chalkWhite.withOpacity(0.1) : Colors.transparent),
           cells: [
@@ -991,7 +1302,7 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                     child: const Text('✔️ GATA', style: TextStyle(color: chalkYellow, fontSize: 12)),
                   ),
                   const SizedBox(height: 5),
-                  OutlinedButton( // <--- BUTONUL NOU DE CANCEL AICI
+                  OutlinedButton( 
                     onPressed: _undoLastRound,
                     style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), side: const BorderSide(color: chalkRed)),
                     child: Text(widget.isRomanian ? '❌ ANULEAZĂ' : '❌ CANCEL', style: const TextStyle(color: chalkRed, fontSize: 12)),
@@ -999,7 +1310,6 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                 ]
               ],
             )),
-            // SUMA pentru fiecare jucator in runda asta de totale
             ...List.generate(n, (p) {
                int sum = 0;
                if (isActive) {
@@ -1017,7 +1327,6 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
           ]
         ));
 
-        // RÂNDURILE SUBORDONATE (Levate, Dame, etc.)
         for (var sg in _subGamesTotale) {
           rows.add(DataRow(
             color: MaterialStateProperty.all(isActive ? chalkWhite.withOpacity(0.05) : Colors.transparent),
@@ -1043,7 +1352,6 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
         }
 
       } else {
-        // JOC NORMAL DE RENTZ (Un singur rând)
         rows.add(DataRow(
           color: MaterialStateProperty.all(isActive ? chalkWhite.withOpacity(0.08) : Colors.transparent),
           cells: [
@@ -1061,7 +1369,7 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                     child: const Text('✔️ GATA', style: TextStyle(color: chalkYellow, fontSize: 12)),
                   ),
                   const SizedBox(height: 5),
-                  OutlinedButton( // <--- BUTONUL NOU DE CANCEL AICI
+                  OutlinedButton( 
                     onPressed: _undoLastRound,
                     style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), side: const BorderSide(color: chalkRed)),
                     child: Text(widget.isRomanian ? '❌ ANULEAZĂ' : '❌ CANCEL', style: const TextStyle(color: chalkRed, fontSize: 12)),
@@ -1132,7 +1440,7 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
                     headingRowColor: MaterialStateProperty.all(Colors.black.withOpacity(0.3)), 
                     dividerThickness: 1,
                     dataRowMinHeight: 60, 
-                    dataRowMaxHeight: 140, // <-- Am mărit spațiul maxim ca să aibă loc cele două butoane confortabil
+                    dataRowMaxHeight: 140, 
                     columns: [
                       DataColumn(label: Text(widget.isRomanian ? 'Joc' : 'Game', style: const TextStyle(fontSize: 20, color: chalkYellow))),
                       ...widget.playerNames.map((name) => DataColumn(
@@ -1157,6 +1465,257 @@ class _RentzScoreBoardScreenState extends State<RentzScoreBoardScreen> {
             ),
             _buildGameSelectionPanel(),
           ],
+        ),
+      ),
+    );
+  }
+  
+}
+// =========================================================
+// ECRAN MULTIPLAYER WHIST (SINCRONIZAT PE FIREBASE)
+// =========================================================
+
+class MultiplayerWhistScreen extends StatelessWidget {
+  final String roomCode;
+  final String myId;
+  final bool isRomanian;
+
+  const MultiplayerWhistScreen({super.key, required this.roomCode, required this.myId, required this.isRomanian});
+
+  int _calculateWhistScore(int bid, int made) {
+    if (bid == made) return 5 + made;
+    return -((bid - made).abs());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    DatabaseReference roomRef = FirebaseDatabase.instance.ref('rooms/$roomCode');
+
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return;
+        final bool shouldPop = await showExitDialog(context, isRomanian);
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(isRomanian ? 'Scor Whist - Cod: $roomCode' : 'Whist Score - Code: $roomCode')),
+        body: StreamBuilder(
+          stream: roomRef.onValue,
+          builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+            if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+              return const Center(child: CircularProgressIndicator(color: chalkWhite));
+            }
+
+            Map roomData = snapshot.data!.snapshot.value as Map;
+            Map gameState = roomData['gameState'] ?? {};
+            if (gameState.isEmpty) return const Center(child: Text('Se încarcă tabla...'));
+
+            List<dynamic> roundsDyn = gameState['rounds'] ?? [];
+            List<String> pIds = List<String>.from(gameState['pIds'] ?? []);
+            int activeRoundIndex = gameState['activeRoundIndex'] ?? 0;
+            Map playersData = roomData['players'];
+
+            // Numele jucătorilor ordonate după ID (p1, p2, p3...)
+            List<String> playerNames = pIds.map((id) => playersData[id]['name'].toString()).toList();
+            int n = playerNames.length;
+
+            // Calculăm totalurile live
+            List<int> totals = List.filled(n, 0);
+            for (var r in roundsDyn) {
+              if (r['isRoundComplete'] == true) {
+                Map bids = r['bids'] ?? {};
+                Map made = r['made'] ?? {};
+                for (int i = 0; i < n; i++) {
+                  String pId = pIds[i];
+                  if (bids.containsKey(pId) && made.containsKey(pId)) {
+                    totals[i] += _calculateWhistScore(bids[pId], made[pId]);
+                  }
+                }
+              }
+            }
+
+            // Construim Panoul de Input (Butoanele de jos)
+            Widget buildInputPanel() {
+              if (activeRoundIndex >= roundsDyn.length) {
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(border: Border(top: BorderSide(color: chalkWhite.withOpacity(0.5), width: 2))),
+                  child: Center(child: Text(isRomanian ? 'S-A TERMINAT! 🎉' : 'IT\'S OVER! 🎉', style: const TextStyle(fontSize: 24, color: chalkYellow))),
+                );
+              }
+
+              var r = roundsDyn[activeRoundIndex];
+              bool isBidding = !(r['isBiddingComplete'] == true);
+              Map bids = r['bids'] ?? {};
+              Map made = r['made'] ?? {};
+              
+              int inputsGiven = isBidding ? bids.length : made.length;
+              int currentPlayerIndex = (r['firstPlayerIndex'] + inputsGiven) % n;
+              String currentPlayerId = pIds[currentPlayerIndex];
+              String currentPlayerName = playerNames[currentPlayerIndex];
+
+              int currentSum = 0;
+              if (isBidding) {
+                bids.forEach((k, v) => currentSum += (v as int));
+              } else {
+                made.forEach((k, v) => currentSum += (v as int));
+              }
+
+              // Verificăm dacă e rândul utilizatorului care ține telefonul!
+              bool isMyTurn = (currentPlayerId == myId);
+
+              return Container(
+                padding: const EdgeInsets.only(top: 15, bottom: 25, left: 16, right: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  border: Border(top: BorderSide(color: chalkWhite.withOpacity(0.5), width: 2)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isBidding 
+                          ? (isRomanian ? 'Pariu: $currentPlayerName' : 'Bid: $currentPlayerName')
+                          : (isRomanian ? 'Rezultat: $currentPlayerName' : 'Result: $currentPlayerName'),
+                      style: TextStyle(fontSize: 24, color: isBidding ? chalkYellow : chalkWhite),
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    if (!isMyTurn)
+                      Text(
+                        isRomanian ? '(Așteaptă să iți vină rândul)' : '(Waiting for your turn)',
+                        style: const TextStyle(fontSize: 18, color: Colors.white54, fontStyle: FontStyle.italic),
+                      )
+                    else
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        alignment: WrapAlignment.center,
+                        children: List.generate((r['cardCount'] as int) + 1, (value) {
+                          bool isDisabled = false;
+                          if (isBidding && inputsGiven == n - 1) {
+                            isDisabled = (currentSum + value == r['cardCount']);
+                          } else if (!isBidding && inputsGiven == n - 1) {
+                            isDisabled = (currentSum + value != r['cardCount']);
+                          } else if (!isBidding && inputsGiven < n - 1) {
+                            isDisabled = (currentSum + value > r['cardCount']);
+                          }
+
+                          return OutlinedButton(
+                            onPressed: isDisabled ? null : () async {
+                              // Trimiterea Scorului către Firebase
+                              DatabaseReference roundRef = roomRef.child('gameState/rounds/$activeRoundIndex');
+                              if (isBidding) {
+                                await roundRef.child('bids/$myId').set(value);
+                                if (inputsGiven + 1 == n) await roundRef.update({'isBiddingComplete': true});
+                              } else {
+                                await roundRef.child('made/$myId').set(value);
+                                if (inputsGiven + 1 == n) {
+                                  await roundRef.update({'isRoundComplete': true});
+                                  await roomRef.child('gameState').update({'activeRoundIndex': activeRoundIndex + 1});
+                                }
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              shape: const CircleBorder(),
+                              padding: const EdgeInsets.all(20),
+                              side: BorderSide(color: isDisabled ? Colors.transparent : chalkWhite, width: 2),
+                              backgroundColor: isDisabled ? Colors.black26 : Colors.transparent,
+                              foregroundColor: isDisabled ? Colors.white30 : chalkWhite,
+                            ),
+                            child: Text('$value', style: const TextStyle(fontSize: 24)),
+                          );
+                        }),
+                      ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        columnSpacing: 25,
+                        headingRowColor: MaterialStateProperty.all(Colors.black.withOpacity(0.3)),
+                        dividerThickness: 1,
+                        dataRowMinHeight: 60,
+                        dataRowMaxHeight: 80,
+                        columns: [
+                          DataColumn(label: Text(isRomanian ? 'Joc' : 'Round', style: const TextStyle(fontSize: 20, color: chalkYellow))),
+                          ...playerNames.map((name) => DataColumn(label: Text(name, style: const TextStyle(fontSize: 20, color: chalkYellow)))),
+                        ],
+                        rows: [
+                          ...roundsDyn.asMap().entries.map((entry) {
+                            int roundIndex = entry.key;
+                            var r = entry.value;
+                            String cardLabel = isRomanian ? (r['cardCount'] == 1 ? 'carte' : 'cărți') : (r['cardCount'] == 1 ? 'card' : 'cards');
+                            
+                            bool isRoundBidding = !(r['isBiddingComplete'] == true);
+                            int inps = isRoundBidding ? (r['bids']?.length ?? 0) : (r['made']?.length ?? 0);
+                            int currPIndex = (r['firstPlayerIndex'] + inps) % n;
+
+                            return DataRow(
+                              color: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
+                                if (roundIndex == activeRoundIndex) return chalkWhite.withOpacity(0.05);
+                                return null;
+                              }),
+                              cells: [
+                                DataCell(Text('${r['cardCount']} $cardLabel', style: const TextStyle(fontSize: 18))),
+                                ...List.generate(n, (pIndex) {
+                                  String pId = pIds[pIndex];
+                                  int? bid = r['bids']?[pId];
+                                  int? made = r['made']?[pId];
+                                  bool isCurrentPlayer = (roundIndex == activeRoundIndex) && (pIndex == currPIndex);
+
+                                  if (bid == null) {
+                                    return DataCell(isCurrentPlayer && isRoundBidding
+                                        ? const Text('✏️ ...', style: TextStyle(color: chalkYellow, fontSize: 18))
+                                        : const Text('-', style: TextStyle(color: Colors.white54)));
+                                  } else if (made == null) {
+                                    return DataCell(isCurrentPlayer && !isRoundBidding
+                                        ? Text('$bid  /  ✏️', style: const TextStyle(color: chalkWhite, fontSize: 18))
+                                        : Text('$bid  /  -', style: const TextStyle(color: Colors.white70, fontSize: 18)));
+                                  } else {
+                                    int score = _calculateWhistScore(bid, made);
+                                    return DataCell(
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('$bid  /  $made', style: const TextStyle(fontSize: 16)),
+                                          Text('${score > 0 ? '+$score' : score}', style: TextStyle(fontSize: 20, color: score > 0 ? chalkYellow : chalkRed)),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                }),
+                              ],
+                            );
+                          }),
+                          DataRow(
+                            color: MaterialStateProperty.all(Colors.black.withOpacity(0.3)),
+                            cells: [
+                              const DataCell(Text('TOTAL', style: TextStyle(fontSize: 22, color: chalkYellow))),
+                              ...totals.map((t) => DataCell(Text('$t', style: const TextStyle(fontSize: 24, color: chalkYellow)))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                buildInputPanel(),
+              ],
+            );
+          },
         ),
       ),
     );
