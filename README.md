@@ -1,17 +1,18 @@
-# flutter_application_1
+# Whist & Rentz Score Keeper
 
-A new Flutter project.
+A modern mobile application built with Flutter to manage scores for Whist and Rentz card games.
+This app eliminates the need for pen and paper by providing automatic calculation and real-time multiplayer synchronization.
 
-## Getting Started
+## Key Features
+- Live Multiplayer: real-time data synchronization across multiple devices.
+- Thematic Design: custom chalkboard UI/UX theme using Flutter's CustomPainter.
+- Smart Logic Validation: built-in algorithms to prevent bids.
+- Bilingual Support: Romanian or English.
+- Automatic Scoring: integrated formulas for complex Whist points or Rentz sub-games like King of Hearts, Queens, Totals, etc.
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Tech Stack
+- Framework: Flutter (Dart)
+- Database: Firebase Realtime Database
+- UI Components: CustomPainter, Google Fonts, Flag API
+- Version Control: Git & GitHub
+  
